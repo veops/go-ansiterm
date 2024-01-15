@@ -1,0 +1,42 @@
+package _const
+
+const (
+	// Basic control sequences
+	RIS    = "c"
+	IND    = "D"
+	NEL    = "E"
+	HTS    = "H"
+	RI     = "M"
+	DECSC  = "7"
+	DECRC  = "8"
+	DECALN = "8"
+
+	// ECMA-48 CSI sequences
+	ICH     = "@"
+	CUU     = "A"
+	CUD     = "B"
+	CUF     = "C"
+	CUB     = "D"
+	CNL     = "E"
+	CPL     = "F"
+	CHA     = "G"
+	CUP     = "H"
+	ED      = "J"
+	EL      = "K"
+	IL      = "L"
+	DL      = "M"
+	DCH     = "P"
+	ECH     = "X"
+	HPR     = "a"
+	DA      = "c"
+	VPA     = "d"
+	VPR     = "e"
+	HVP     = "f"
+	TBC     = "g"
+	SM      = "h"
+	RM      = "l"
+	SGR     = "m"
+	DSR     = "n"
+	DECSTBM = "r"
+	HPA     = "'"
+)
