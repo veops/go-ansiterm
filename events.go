@@ -103,7 +103,22 @@ func (s *Stream) HandleSharp(char string) {
 	}
 }
 
-func (s *Stream) HandleCSI(char string, param []int, private *bool) {
+func tidyParams(param []int, num int) []int {
+	if len(param) < num {
+		var newParams = make([]int, num)
+		for i := 0; i < num; i++ {
+			newParams[i] = 0
+		}
+		for i, v := range param {
+			newParams[i] = v
+		}
+		return newParams
+	}
+	return param
+}
+
+func (s *Stream) HandleCSI(char string, params []int, kw map[string]any) {
+	param := tidyParams(params, 1)
 	switch char {
 	case ICH:
 		s.Listener.InsertCharacters(param[0])
@@ -122,11 +137,19 @@ func (s *Stream) HandleCSI(char string, param []int, private *bool) {
 	case CHA, HPA:
 		s.Listener.CursorToColumn(param[0])
 	case CUP, HVP:
+		param = tidyParams(params, 2)
 		s.Listener.CursorPosition(param[0], param[1])
 	case ED:
 		s.Listener.EraseInDisplay(param[0])
 	case EL:
-		s.Listener.EraseInLine(param[0], *private)
+		if v, ok := kw["private"]; ok {
+			switch v.(type) {
+			case bool:
+				s.Listener.EraseInLine(param[0], v.(bool))
+				return
+			}
+		}
+		s.Listener.EraseInLine(param[0], false)
 	case IL:
 		s.Listener.InsertLines(param[0])
 	case DL:
@@ -136,7 +159,14 @@ func (s *Stream) HandleCSI(char string, param []int, private *bool) {
 	case ECH:
 		s.Listener.EraseCharacters(param[0])
 	case DA, DSR:
-		s.Listener.ReportDeviceAttributes(param[0], *private)
+		req := map[string]bool{}
+		for k, v := range kw {
+			switch v.(type) {
+			case bool:
+				req[k] = v.(bool)
+			}
+		}
+		s.Listener.ReportDeviceAttributes(param[0], req)
 	case VPA:
 		s.Listener.CursorToLine(param[0])
 	case VPR:
@@ -144,11 +174,11 @@ func (s *Stream) HandleCSI(char string, param []int, private *bool) {
 	case TBC:
 		s.Listener.ClearTabStop(param[0])
 	case SM:
-		s.Listener.SetMode(param, *private)
+		s.Listener.SetMode(params, kw)
 	case RM:
-		s.Listener.ResetMode(param, *private)
+		s.Listener.ResetMode(params, kw)
 	case SGR:
-		s.Listener.SelectGraphicRendition(param...)
+		s.Listener.SelectGraphicRendition(params...)
 	case DECSTBM:
 		s.Listener.SetMargins(param[0], param[1])
 	default:

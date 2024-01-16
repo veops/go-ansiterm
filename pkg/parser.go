@@ -7,12 +7,15 @@ type Parser interface {
 	GetPlain() bool
 	Len() int
 	Close()
+	Running() bool
+	Start()
 }
 
 type MyParser struct {
 	CharChan chan string
 	IsPlain  chan bool
 	Closed   bool
+	State    bool
 }
 
 func (m *MyParser) Next() string {
@@ -43,4 +46,12 @@ func (m *MyParser) Close() {
 	m.Closed = true
 	close(m.IsPlain)
 	close(m.CharChan)
+}
+
+func (m *MyParser) Running() bool {
+	return m.State
+}
+
+func (m *MyParser) Start() {
+	m.State = true
 }

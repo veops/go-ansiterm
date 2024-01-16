@@ -116,6 +116,7 @@ func (s *Stream) InitializeParser() {
 	}
 	go s.parseFsm()
 	s.TakingPlainText = true
+	s.parser.Running()
 }
 
 func (s *Stream) Feed(data string) {
@@ -128,7 +129,10 @@ func (s *Stream) Feed(data string) {
 
 	length := len(data)
 	offset := 0
-	s.parser.GetPlain()
+	if !s.parser.Running() {
+		s.parser.Start()
+		s.parser.GetPlain()
+	}
 	for offset < length {
 		if takingPlainText {
 			matches := matchText(data[offset:])
@@ -153,7 +157,6 @@ func (s *Stream) Feed(data string) {
 }
 
 func (s *Stream) parseFsm() {
-
 	if s.Listener == nil {
 		panic("listener is nil")
 	}
@@ -175,7 +178,6 @@ func (s *Stream) parseFsm() {
 	for {
 		s.parser.SetPlain(true)
 		char = s.parser.Next()
-
 		if char == ESC {
 			s.parser.SetPlain(false)
 
@@ -238,7 +240,7 @@ func (s *Stream) parseFsm() {
 						current = ""
 					} else {
 						if private {
-							s.HandleCSI(char, params, &private)
+							s.HandleCSI(char, params, map[string]any{"private": true})
 						} else {
 							s.HandleCSI(char, params, nil)
 						}

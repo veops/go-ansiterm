@@ -223,27 +223,6 @@ func (s *Screen) setTitle(param string) {
 	s.title = param
 }
 
-//func (s *Screen) display() []string {
-//	var lines []string
-//	for i := 0; i < s.lines; i++ {
-//		var lineStr string
-//		skipNext := false
-//		for j := 0; j < s.columns; j++ {
-//			if skipNext {
-//				skipNext = false
-//				continue
-//			}
-//			char := s.buffer[i].Get(j).Data
-//
-//			if utf8.RuneCountInString(char[1:]) > 1 {
-//				skipNext = true
-//			}
-//		}
-//		lines = append(lines, lineStr)
-//	}
-//	return lines
-//}
-
 func (s *Screen) Display() []string {
 	var renderLine = func(line map[int]Char) string {
 		var lineStr string
@@ -255,6 +234,9 @@ func (s *Screen) Display() []string {
 				continue
 			}
 			char := line[x].Data
+			if x >= 70 && x <= 73 {
+				//fmt.Println("char:", char)
+			}
 			if len(char) > 0 {
 				isWideChar = runewidth.RuneWidth(rune(char[0])) == 2
 			}
@@ -266,7 +248,6 @@ func (s *Screen) Display() []string {
 	var result []string
 	for y := 0; y < s.lines; y++ {
 		result = append(result, renderLine(s.buffer.Get(y).Data))
-		//result = append(result, renderLine(s.buffer[y].Data))
 	}
 	return result
 }
@@ -391,16 +372,16 @@ func (s *Screen) RestoreCursor() {
 		s.charset = sp.Charset
 
 		if sp.Origin {
-			s.SetMode([]int{DECOM}, false)
+			s.SetMode([]int{DECOM}, map[string]any{"private": false})
 		}
 		if sp.Wrap {
-			s.SetMode([]int{DECAWM}, false)
+			s.SetMode([]int{DECAWM}, map[string]any{"private": false})
 		}
 		s.cursor = sp.Cursor
 		s.EnsureHBounds()
 		s.EnsureVBounds(true)
 	} else {
-		s.ResetMode([]int{DECOM}, false)
+		s.ResetMode([]int{DECOM}, map[string]any{"private": false})
 		s.CursorPosition(0, 0)
 	}
 }
@@ -518,7 +499,7 @@ func (s *Screen) EraseInDisplay(how int) {
 	for _, v := range interval {
 		s.dirty[v] = struct{}{}
 	}
-	for i := range interval {
+	for _, i := range interval {
 		//line := s.buffer[i].Data
 		line := s.buffer.Get(i).Data
 		for j := range line {
@@ -542,7 +523,9 @@ func (s *Screen) EraseInLine(how int, private bool) {
 	}
 	//line := s.buffer[s.cursor.Y].Data
 	line := s.buffer.Get(s.cursor.Y).Data
-	for i := range interval {
+	//fmt.Printf("line:%#v\n", line)
+	for _, i := range interval {
+		s.buffer.Get(s.cursor.Y).Set(i, s.cursor.Attrs)
 		line[i] = s.cursor.Attrs
 	}
 }
@@ -633,9 +616,11 @@ func (s *Screen) EraseCharacters(count int) {
 		line[x] = s.cursor.Attrs
 	}
 }
-func (s *Screen) ReportDeviceAttributes(mode int, private bool) {
-	if mode == 0 && !private {
-		s.WriteProcessInput(CSI + "?6c")
+func (s *Screen) ReportDeviceAttributes(mode int, kw map[string]bool) {
+	if mode == 0 {
+		if v, ok := kw["private"]; ok && v {
+			s.WriteProcessInput(CSI + "?6c")
+		}
 	}
 }
 
@@ -681,11 +666,11 @@ func (s *Screen) ClearTabStop(how int) {
 		s.tabsTops = make(map[int]bool)
 	}
 }
-func (s *Screen) SetMode(modes []int, private bool) {
+func (s *Screen) SetMode(modes []int, kw map[string]any) {
 	//var modeList []int
 	var modeList = make([]int, len(modes))
 	copy(modeList, modes)
-	if private {
+	if val, ok := kw["private"]; ok && val.(bool) {
 		for i, v := range modes {
 			modeList[i] = v << 5
 		}
@@ -733,10 +718,10 @@ func (s *Screen) SetMode(modes []int, private bool) {
 	}
 }
 
-func (s *Screen) ResetMode(modes []int, private bool) {
+func (s *Screen) ResetMode(modes []int, kw map[string]any) {
 	var modeList = make([]int, len(modes))
 	copy(modeList, modes)
-	if private {
+	if private, ok := kw["private"]; ok && private.(bool) {
 		for i, v := range modes {
 			modeList[i] = v << 5
 		}
