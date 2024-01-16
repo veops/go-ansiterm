@@ -1,5 +1,7 @@
 package pkg
 
+import "fmt"
+
 type Parser interface {
 	Next() string
 	Send(value string) bool
@@ -43,6 +45,7 @@ func (m *MyParser) SetPlain(bool2 bool) {
 }
 
 func (m *MyParser) Close() {
+	fmt.Println("close....")
 	m.Closed = true
 	close(m.IsPlain)
 	close(m.CharChan)
