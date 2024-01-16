@@ -10,10 +10,10 @@
 [中文](README_zh.md)
 
 
-## 介绍
+## Introduction
 **`go-ansiterm`**  is a Linux terminal emulator similar to pyte, specifically designed for the Go language. While retaining the powerful features of pyte, it further adapts to the Go ecosystem.
 
-## 适用场景
+## Use Cases
 In scenarios involving jump servers and other situations that require strict management of user terminal command execution, it's necessary to filter commands before they are executed by the user. In the development stack based on Golang, we haven't found any related open-source libraries. Additionally, some open-source jump server projects do not support command extraction. Therefore, this tool is mainly developed based on practical needs, to solve the problem of extracting commands executed by terminal users.
 
 ## Core Features
