@@ -172,7 +172,7 @@ func (s *Screen) Draw(data string) {
 			line.Set(s.cursor.X, t)
 		case charWidth == 2:
 			t := s.cursor.Attrs
-			s.cursor.Attrs.Data = string(char)
+			t.Data = string(char)
 			line.Set(s.cursor.X, t)
 			if s.cursor.X+1 < s.columns {
 				t1 := s.cursor.Attrs
