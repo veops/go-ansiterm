@@ -45,11 +45,11 @@ func NewScreen(columns int, lines int) *Screen {
 	if _, ok := DefaultMode[DECSCNM]; ok {
 		reverse = ok
 	}
-	defautlVal := Char{Data: " ", Fg: "default", Bg: "default", Reverse: reverse}
+	defaultVal := Char{Data: "", Fg: "default", Bg: "default", Reverse: reverse}
 	s := &Screen{
 		columns: columns,
 		lines:   lines,
-		buffer:  NewScreenBuffer(defautlVal),
+		buffer:  NewScreenBuffer(defaultVal),
 		//buffer:  make(map[int]*StaticDefaultDict[int, Char]),
 		dirty:   make(map[int]struct{}),
 		mode:    DefaultMode,
@@ -66,7 +66,7 @@ func (s *Screen) String() string {
 func (s *Screen) DefaultChar() Char {
 	_, reverse := s.mode[DECSCNM]
 	return Char{
-		Data:    " ",
+		Data:    "",
 		Fg:      "default",
 		Bg:      "default",
 		Reverse: reverse,
@@ -164,7 +164,6 @@ func (s *Screen) Draw(data string) {
 
 		//line := s.buffer[s.cursor.Y]
 		line := s.buffer.Get(s.cursor.Y)
-
 		switch {
 		case charWidth == 1:
 			t := s.cursor.Attrs
@@ -234,15 +233,11 @@ func (s *Screen) Display() []string {
 				continue
 			}
 			char := line[x].Data
-			if x >= 70 && x <= 73 {
-				//fmt.Println("char:", char)
-			}
 			if len(char) > 0 {
 				isWideChar = runewidth.RuneWidth(rune(char[0])) == 2
 			}
 			lineStr += char
 		}
-
 		return lineStr
 	}
 	var result []string

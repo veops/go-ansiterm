@@ -24,6 +24,7 @@ func (b *ByteStream) Feed(data []byte) {
 		dataStr = BytesToString(data)
 	}
 	b.Stream.Feed(dataStr)
+
 }
 
 func (b *ByteStream) selectOtherCharset(code string) {
