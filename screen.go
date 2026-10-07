@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
-	runewidth "github.com/mattn/go-runewidth"
 	. "github.com/veops/go-ansiterm/const"
 	"golang.org/x/text/unicode/norm"
 )
@@ -87,9 +87,9 @@ func (s *Screen) SetCursorPosition(line, column int) {
 	if s.margins != nil {
 		if _, ok := s.mode[DECOM]; ok {
 			line += s.margins.Top
-		}
-		if !(s.margins.Top <= line && line <= s.margins.Bottom) {
-			return
+			if !(s.margins.Top <= line && line <= s.margins.Bottom) {
+				return
+			}
 		}
 	}
 
@@ -223,26 +223,28 @@ func (s *Screen) setTitle(param string) {
 }
 
 func (s *Screen) Display() []string {
-	var renderLine = func(line map[int]Char) string {
-		var lineStr string
-		isWideChar := false
-
+	renderLine := func(line map[int]Char) string {
+		var text strings.Builder
+		text.Grow(max(s.columns, 0))
+		end := 0
 		for x := 0; x < s.columns; x++ {
-			if isWideChar {
-				isWideChar = false
+			char := line[x].Data
+			if char == "" {
+				text.WriteByte(' ')
 				continue
 			}
-			char := line[x].Data
-			if len(char) > 0 {
-				isWideChar = runewidth.RuneWidth(rune(char[0])) == 2
+			text.WriteString(char)
+			end = text.Len()
+			r, _ := utf8.DecodeRuneInString(char)
+			if WidthOfRune(r) == 2 {
+				x++
 			}
-			lineStr += char
 		}
-		return lineStr
+		return text.String()[:end]
 	}
-	var result []string
+	result := make([]string, max(s.lines, 0))
 	for y := 0; y < s.lines; y++ {
-		result = append(result, renderLine(s.buffer.Get(y).Data))
+		result[y] = renderLine(s.buffer.Get(y).Data)
 	}
 	return result
 }
@@ -581,22 +583,16 @@ func (s *Screen) DeleteLines(count int) {
 	}
 }
 func (s *Screen) DeleteCharacters(count int) {
-	if count == 0 {
+	if count < 1 {
 		count = 1
 	}
 	s.dirty[s.cursor.Y] = struct{}{}
-	//line := s.buffer[s.cursor.Y].Data
-	line := s.buffer.Get(s.cursor.Y).Data
-	for x := range Range1(s.cursor.X, s.columns) {
-		if x+count <= s.columns {
-			if v, ok := line[x+count]; ok {
-				line[x] = v
-				delete(line, x+count)
-			} else {
-				line[x] = s.DefaultChar()
-			}
+	line := s.buffer.Get(s.cursor.Y)
+	for x := s.cursor.X; x < s.columns; x++ {
+		if count < s.columns-x {
+			line.Set(x, line.Get(x+count))
 		} else {
-			delete(line, x+count)
+			line.Set(x, s.DefaultChar())
 		}
 	}
 }
@@ -607,7 +603,7 @@ func (s *Screen) EraseCharacters(count int) {
 	s.dirty[s.cursor.Y] = struct{}{}
 	//line := s.buffer[s.cursor.Y].Data
 	line := s.buffer.Get(s.cursor.Y).Data
-	for x := range Range1(s.cursor.X, min(s.cursor.X+count, s.columns)) {
+	for _, x := range Range1(s.cursor.X, min(s.cursor.X+count, s.columns)) {
 		line[x] = s.cursor.Attrs
 	}
 }
@@ -635,24 +631,7 @@ func (s *Screen) CursorToLine(line int) {
 	s.EnsureVBounds(false)
 }
 func (s *Screen) CursorPosition(line, column int) {
-	if line == 0 {
-		line = 1
-	}
-	if column == 0 {
-		column = 1
-	}
-	if s.margins != nil {
-		if _, ok := s.mode[DECOM]; ok {
-			line += s.margins.Top
-			if !(s.margins.Top <= line && line <= s.margins.Bottom) {
-				return
-			}
-		}
-	}
-	s.cursor.X = column
-	s.cursor.Y = line
-	s.EnsureHBounds()
-	s.EnsureVBounds(false)
+	s.SetCursorPosition(line, column)
 }
 func (s *Screen) ClearTabStop(how int) {
 	if how == 0 {

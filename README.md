@@ -39,7 +39,8 @@ screen := NewScreen(80, 24)
 stream := InitByteStream(screen, false)
 
 # Connect the stream object to the screen
-stream.Attach(screen
+stream.Attach(screen)
+defer stream.Close()
 
 # Feed input into the stream object
 stream.Feed(input)
@@ -48,3 +49,17 @@ stream.Feed(input)
 output := screen.Display()
 
 ```
+
+## Stream lifecycle and command checks
+
+Call `Close()` when a session ends, including when it disconnects during an
+escape sequence. `Close()` waits for the parser worker to exit and is idempotent.
+`Feed`, `Attach`, `InitializeParser` and `Close` are serialized. Direct screen
+access must be serialized by the caller with these operations.
+
+The screen represents terminal output, including edits echoed by the remote
+shell. This library does not execute commands or enforce authorization. A
+bastion must check input before forwarding the submission to the target, use
+the echoed screen to reconcile command edits, and maintain its own permissions,
+command policy and audit trail. Screen output alone cannot safely authorize
+multiline paste, shell scripts or commands that have already been forwarded.

@@ -41,6 +41,7 @@ stream := InitByteStream(screen, false)
 
 # 将流对象连接到屏幕
 stream.Attach(screen)
+defer stream.Close()
 
 # 将流对象连接到屏幕
 stream.Feed(input)
@@ -51,3 +52,13 @@ output := screen.Display()
 # 重置屏幕
 screen.Reset()
 ```
+## 解析器生命周期与命令检查
+
+会话结束时调用 `stream.Close()`，包括连接在转义序列中途断开的情况。
+`Close()` 会等待解析任务退出，可以重复调用。`Feed`、`Attach`、
+`InitializeParser` 和 `Close` 会串行执行；调用方需要自行同步直接操作屏幕的代码。
+
+屏幕还原的是远程终端输出，包括 shell 回显的编辑结果。库本身不会执行命令或
+检查访问权限。堡垒机需要在提交输入给目标之前检查命令，并结合回显还原编辑内容，
+独立维护权限、命令策略和审计。仅靠屏幕输出无法安全地阻断多行粘贴、shell 脚本
+或已经转发到目标的命令。

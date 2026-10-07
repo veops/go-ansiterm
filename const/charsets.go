@@ -144,6 +144,7 @@ func init() {
 
 func Translate(s string, m map[rune]rune) string {
 	var sb strings.Builder
+	sb.Grow(len(s))
 	for _, c := range s {
 		if val, ok := m[c]; ok {
 			sb.WriteRune(val)

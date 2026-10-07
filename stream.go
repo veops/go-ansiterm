@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	. "github.com/veops/go-ansiterm/const"
@@ -40,7 +41,11 @@ type Stream struct {
 	Csi             map[string]struct{}
 	//Events          map[string]struct{} // or []string
 	TextPattern *regexp.Regexp
-	parser      Parser
+	parser      *MyParser
+	mu          sync.Mutex
+	finished    <-chan struct{}
+	closed      bool
+	pending     []byte
 }
 
 func generateTextPattern() (*regexp.Regexp, error) {
@@ -105,21 +110,63 @@ func initializeStream(screen *Screen, strict bool) *Stream {
 }
 
 func (s *Stream) Attach(screen *Screen) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopParser()
 	s.Listener = screen
-	s.InitializeParser()
+	s.closed = false
+	s.pending = nil
+	s.initializeParser()
 }
 
 func (s *Stream) InitializeParser() {
-	s.parser = &MyParser{
-		CharChan: make(chan string, 2048),
-		IsPlain:  make(chan bool),
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
 	}
-	go s.parseFsm()
+	s.stopParser()
+	s.initializeParser()
+}
+
+func (s *Stream) initializeParser() {
+	parser := &MyParser{CharChan: make(chan string, 1), IsPlain: make(chan bool, 1)}
+	finished := make(chan struct{})
+	s.parser, s.finished = parser, finished
 	s.TakingPlainText = true
-	s.parser.Running()
+	go func() {
+		defer close(finished)
+		s.parseFsm(parser)
+	}()
+}
+
+func (s *Stream) stopParser() {
+	if s.parser != nil {
+		s.parser.Close()
+		<-s.finished
+		s.parser, s.finished = nil, nil
+	}
+}
+
+// Close stops parsing and waits for the worker to exit.
+func (s *Stream) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	s.pending = nil
+	s.stopParser()
 }
 
 func (s *Stream) Feed(data string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.feed(data)
+}
+
+func (s *Stream) feed(data string) {
+	if s.closed {
+		return
+	}
 	//matchText := s.TextPattern.MatchString
 	matchText := s.TextPattern.FindStringSubmatchIndex
 	takingPlainText := s.TakingPlainText
@@ -145,18 +192,16 @@ func (s *Stream) Feed(data string) {
 				takingPlainText = false
 			}
 		} else {
-			if s.parser.Send(data[offset : offset+1]) {
-				takingPlainText = s.parser.GetPlain()
-			} else {
-				s.InitializeParser()
-			}
+			// Feed and Close share s.mu, so the input channel stays open here.
+			s.parser.CharChan <- data[offset : offset+1]
+			takingPlainText = s.parser.GetPlain()
 			offset++
 		}
 	}
 	s.TakingPlainText = takingPlainText
 }
 
-func (s *Stream) parseFsm() {
+func (s *Stream) parseFsm(parser *MyParser) {
 	if s.Listener == nil {
 		panic("listener is nil")
 	}
@@ -173,29 +218,46 @@ func (s *Stream) parseFsm() {
 
 	var char string
 	defer func() {
-		s.parser.Close()
+		parser.Close()
 	}()
 	for {
-		s.parser.SetPlain(true)
-		char = s.parser.Next()
+		parser.SetPlain(true)
+		char = parser.Next()
+		if char == "" {
+			return
+		}
 		if char == ESC {
-			s.parser.SetPlain(false)
+			parser.SetPlain(false)
 
-			char = s.parser.Next()
+			char = parser.Next()
+			if char == "" {
+				return
+			}
 			if char == "[" {
 				char = CSIC1
 			} else if char == "]" {
 				char = OSCC1
 			} else {
 				if char == "#" {
-					s.parser.SetPlain(false)
-					s.HandleSharp(s.parser.Next())
+					parser.SetPlain(false)
+					code := parser.Next()
+					if code == "" {
+						return
+					}
+					s.HandleSharp(code)
 				} else if char == "%" {
-					s.parser.SetPlain(false)
-					s.selectOtherCharset(s.parser.Next())
+					parser.SetPlain(false)
+					code := parser.Next()
+					if code == "" {
+						return
+					}
+					s.selectOtherCharset(code)
 				} else if char == "(" || char == ")" {
-					s.parser.SetPlain(false)
-					code := s.parser.Next()
+					parser.SetPlain(false)
+					code := parser.Next()
+					if code == "" {
+						return
+					}
 					if s.UseUTF8 {
 						continue
 					}
@@ -217,8 +279,11 @@ func (s *Stream) parseFsm() {
 			current := ""
 			private := false
 			for {
-				s.parser.SetPlain(false)
-				char = s.parser.Next()
+				parser.SetPlain(false)
+				char = parser.Next()
+				if char == "" {
+					return
+				}
 				if char == "?" {
 					private = true
 				} else if strings.Contains(AllowedInCsi, char) {
@@ -230,8 +295,11 @@ func (s *Stream) parseFsm() {
 				} else if unicode.IsDigit(rune(char[0])) {
 					current += char
 				} else if char == "$" {
-					s.parser.SetPlain(false)
-					char = s.parser.Next()
+					parser.SetPlain(false)
+					char = parser.Next()
+					if char == "" {
+						return
+					}
 					break
 				} else {
 					num, _ := strconv.Atoi(current)
@@ -249,19 +317,29 @@ func (s *Stream) parseFsm() {
 				}
 			}
 		} else if char == OSCC1 {
-			s.parser.SetPlain(false)
-			code := s.parser.Next()
+			parser.SetPlain(false)
+			code := parser.Next()
+			if code == "" {
+				return
+			}
 			switch code {
 			case "R", "P":
 				continue
 			}
 			param := ""
 			for {
-				s.parser.SetPlain(false)
-				char = s.parser.Next()
+				parser.SetPlain(false)
+				char = parser.Next()
+				if char == "" {
+					return
+				}
 				if char == ESC {
-					s.parser.SetPlain(false)
-					char += s.parser.Next()
+					parser.SetPlain(false)
+					next := parser.Next()
+					if next == "" {
+						return
+					}
+					char += next
 				}
 				if _, ok := OscTermINATORS[char]; ok {
 					break
@@ -269,7 +347,7 @@ func (s *Stream) parseFsm() {
 					param += char
 				}
 			}
-			param = param[:1]
+			param = strings.TrimPrefix(param, ";")
 			if strings.Contains("01", code) {
 				s.Listener.setIconName(param)
 			}
